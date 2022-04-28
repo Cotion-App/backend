@@ -1,16 +1,18 @@
 from flask import Flask, request
 from flask_cors import CORS
-
+from canvasapi import Canvas
 
 app = Flask(__name__)
 CORS(app)
 
-@app.route('/users/<id>/phone/<phone>')
-def add_phone(id, phone):
-    """
-    Add your phone number to the coursify database
+@app.route('/canvas/get_assignments/<domain>/<user_token>/<course_id>')
+def get_assignments(domain, user_token, course_id):
+    canvas = Canvas("https://" +  domain, user_token)
+    assignments = canvas.get_course(int(course_id)).get_assignments()
+    out = []
+    for ass in assignments:
+        out.append({'name': ass.__getattribute__('name'), 'due': ass.__getattribute__('due_at')})
+    return {'assignments' : out}
 
-    Returns:
-        user_phone (string): the number that was added to the database
-    """
-    return phone
+# method to read Canvas Classes
+# update notion function
