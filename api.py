@@ -20,10 +20,10 @@ def run(domain, canvas_token, course_id, course_name, db_id):
         new_state = get_assignments(domain, canvas_token, course_id)['assignments']
         curr_state = read_notion(db_id)
         update_notion(db_id, new_state, curr_state, course_name)
-        return 'You are now up to date!'
+        return 'You are now up to date!',200
     except Exception as e:
         print(e.__class__, str(e), e.__traceback__.tb_lineno)
-        return str(e).capitalize()
+        return str(e).capitalize(), 400
         
 def get_assignments(domain,canvas_token, course_id):
     try:
