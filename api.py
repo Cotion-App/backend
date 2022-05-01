@@ -5,6 +5,7 @@ from canvasapi import Canvas
 import os
 from dotenv import load_dotenv
 import json
+
 app = Flask(__name__)
 CORS(app)
 load_dotenv()
@@ -21,6 +22,7 @@ def run(domain, canvas_token, course_id, course_name, db_id):
         update_notion(db_id, new_state, curr_state, course_name)
         return 'You are now up to date!'
     except Exception as e:
+        print(e.__class__, str(e), e.__traceback__.tb_lineno)
         return str(e).capitalize()
         
 def get_assignments(domain,canvas_token, course_id):
@@ -37,20 +39,12 @@ def get_assignments(domain,canvas_token, course_id):
         return {'assignments': out}
     except Exception as e:
         ex = str(type(e))
-        
-        # logging to console
-        print(type(e), e)
 
-        if ('Unauthorized' in ex):
-            message = "You do not have access to this class in Canvas"
-        elif ('InvalidAccessToken' in ex):
-            message = "You passed in an invalid access token"
-        else:
-            # Unhandled exception
-            print('Unhandled Canvas exception: ' + str(e))
-            message = "Unhandled Exception"
+        message = "You do not have access to this class in Canvas" if "Unauthorized" in ex else "Unhandled Exception"
+        message = "You passed in an invalid access token" if "InvalidAccessToken" in ex else "Unhandled Exception"
 
         raise Exception(message)
+
 
 def read_notion(db_id):
     """this function reads notion and returns the current state as a dictionary with only the relevant details"""
@@ -62,11 +56,9 @@ def read_notion(db_id):
 
     while has_more:
         if start_cursor:
-            res = requests.post('https://api.notion.com/v1/databases/' + db_id +
-                                '/query', headers=headers, json={'start_cursor': start_cursor})
+            res = requests.post('https://api.notion.com/v1/databases/' + db_id + '/query', headers=headers, json={'start_cursor': start_cursor})
         else:
-            res = requests.post(
-                'https://api.notion.com/v1/databases/' + db_id + '/query', headers=headers)
+            res = requests.post('https://api.notion.com/v1/databases/' + db_id + '/query', headers=headers)
 
         if (res.status_code != 200):
             notion_errors(json.loads(res._content)['code'])
@@ -77,16 +69,26 @@ def read_notion(db_id):
         has_more = res_json['has_more']
         start_cursor = res_json['next_cursor']
     temp = {}
+    i = 0
     for task in all_tasks:
-        date=''
-        if (task['properties']['Due']['date'] == None):
-            date = 'None'
-        else :
-            date = task['properties']['Due']['date']['start']
+
+        if i == 0:
+            must = ['Course', 'Due', 'Assignment Name']
+            for must_key in must:
+                if must_key not in task['properties'].keys():
+                    raise Exception('You are missing '  + must_key + ' column.')
+            i+= 1
+        
+        date = "None" if task['properties']['Due']['date'] == None else task['properties']['Due']['date']['start']
+        
+        course = "None" if task['properties']['Course']['select'] == None else task['properties']['Course']['select']['name']
+
         temp[task['properties']['Assignment Name']['title'][0]['text']['content']] = {
             'id': task['id'], 
-            'due': task['properties']['Due']['date'] == date
+            'due': task['properties']['Due']['date'] == date,
+            'course': course
             }
+    
     return temp
 
 def notion_errors(code):
@@ -104,11 +106,10 @@ def notion_errors(code):
         print(code)
         raise Exception('Unhandled Notion Exception')
 
-    pass
 
 def update_notion(db_id, new_state, curr_state, course_name):
     """intelligently updates notion so that we do not have duplicate data"""
-    # equality checking, equality checking to prevent unnecessary calls, missing column issue, 
+
     # better error handling (for any unknown errors its hard to pinpoint cause because of current rendering)
     for assignment in new_state:
         payload = {'parent': {'database_id': db_id},
@@ -118,7 +119,8 @@ def update_notion(db_id, new_state, curr_state, course_name):
         if (assignment['due'] == 'None'):
             del payload['properties']['Due']
         res=''
-        if assignment['name'] in curr_state.keys():
+
+        if assignment['name'] in curr_state.keys() and course_name == curr_state[assignment['name']]['course']:
             res = requests.patch(
                     'https://api.notion.com/v1/pages/'+curr_state[assignment['name']]['id'], headers=headers, json=payload)
         else:  
