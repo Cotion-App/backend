@@ -12,11 +12,11 @@ headers = {'Authorization': os.getenv(
     'NOTION'), 'Notion-Version': '2021-08-16'}
 
 
-@app.route('/run/<domain>/<course_id>/<course_name>/<db_id>')
-def run(domain, course_id, course_name, db_id):
+@app.route('/run/<domain>/<canvas_token>/<course_id>/<course_name>/<db_id>')
+def run(domain, canvas_token, course_id, course_name, db_id):
     """api endpoint that acts as a wrapper for all sub functions, and basic error handling"""
     try:
-        new_state = get_assignments(domain, course_id)['assignments']
+        new_state = get_assignments(domain, canvas_token, course_id)['assignments']
         curr_state = read_notion(db_id)
         update_notion(db_id, new_state, curr_state, course_name)
         return 'success'
@@ -24,11 +24,10 @@ def run(domain, course_id, course_name, db_id):
         return str(e)
 
 
-def get_assignments(domain, course_id):
+def get_assignments(domain,canvas_token, course_id):
     """query the canvas api and return the current assignments as a dictionary"""
 
-    user_token = os.getenv('CANVAS')
-    canvas = Canvas("https://" + domain, user_token)
+    canvas = Canvas("https://" + domain, canvas_token)
     assignments = canvas.get_course(int(course_id)).get_assignments()
     out = []
 
