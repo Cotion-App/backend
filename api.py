@@ -9,17 +9,30 @@ import json
 app = Flask(__name__)
 CORS(app)
 load_dotenv()
-headers = {'Authorization': os.getenv(
-    'NOTION'), 'Notion-Version': '2021-08-16'}
 
 
-@app.route('/run/<domain>/<canvas_token>/<course_id>/<course_name>/<db_id>')
-def run(domain, canvas_token, course_id, course_name, db_id):
+
+@app.route('/notion/<temp_code>/<redirect_uri>')
+def notion_auth(temp_code, redirect_uri):
+    auth = {'Authorization': "Basic " + os.getenv('AUTH'), 
+            'Content-Type': 'application/json'}
+    payload = {'grant_type' : 'authorization_code', 
+               'code' : temp_code,
+               'redirect_uri':"https://google.com"
+            }
+    res = requests.post('https://api.notion.com/v1/oauth/token', headers=auth, json=payload)
+    if "invalid_grant" in str(res._content):
+        return "code_already_in_use"
+    return res.json()['access_token']
+
+@app.route('/run/<domain>/<canvas_token>/<course_id>/<course_name>/<db_id>/<notion_token>')
+def run(domain, canvas_token, course_id, course_name, db_id, notion_token):
     """api endpoint that acts as a wrapper for all sub functions, and basic error handling"""
     try:
         new_state = get_assignments(domain, canvas_token, course_id)['assignments']
-        curr_state = read_notion(db_id)
-        update_notion(db_id, new_state, curr_state, course_name)
+        headers = {'Authorization': notion_token, 'Notion-Version': '2021-08-16'}
+        curr_state = read_notion(db_id, headers)
+        update_notion(db_id, new_state, curr_state, course_name, headers)
         return 'You are now up to date!',200
     except Exception as e:
         print(e.__class__, str(e), e.__traceback__.tb_lineno)
@@ -46,7 +59,7 @@ def get_assignments(domain,canvas_token, course_id):
         raise Exception(message)
 
 
-def read_notion(db_id):
+def read_notion(db_id, headers):
     """this function reads notion and returns the current state as a dictionary with only the relevant details"""
 
     has_more = True
@@ -70,24 +83,24 @@ def read_notion(db_id):
         start_cursor = res_json['next_cursor']
     temp = {}
     i = 0
-    for task in all_tasks:
+    # for task in all_tasks:
 
-        if i == 0:
-            must = ['Course', 'Due', 'Assignment Name']
-            for must_key in must:
-                if must_key not in task['properties'].keys():
-                    raise Exception('You are missing '  + must_key + ' column.')
-            i+= 1
+    #     if i == 0:
+    #         must = ['Course', 'Due', 'Assignment Name']
+    #         for must_key in must:
+    #             if must_key not in task['properties'].keys():
+    #                 raise Exception('You are missing '  + must_key + ' column.')
+    #         i+= 1
         
-        date = "None" if task['properties']['Due']['date'] == None else task['properties']['Due']['date']['start']
+    #     date = "None" if task['properties']['Due']['date'] == None else task['properties']['Due']['date']['start']
         
-        course = "None" if task['properties']['Course']['select'] == None else task['properties']['Course']['select']['name']
-
-        temp[task['properties']['Assignment Name']['title'][0]['text']['content']] = {
-            'id': task['id'], 
-            'due': task['properties']['Due']['date'] == date,
-            'course': course
-            }
+    #     course = "None" if task['properties']['Course']['select'] == None else task['properties']['Course']['select']['name']
+        
+    #     temp[task['properties']['Assignment Name']['title'][0]['text']['content']] = {
+    #         'id': task['id'], 
+    #         'due': task['properties']['Due']['date'] == date,
+    #         'course': course
+    #         }
     
     return temp
 
@@ -107,7 +120,7 @@ def notion_errors(code):
         raise Exception('Unhandled Notion Exception')
 
 
-def update_notion(db_id, new_state, curr_state, course_name):
+def update_notion(db_id, new_state, curr_state, course_name, headers):
     """intelligently updates notion so that we do not have duplicate data"""
 
     # better error handling (for any unknown errors its hard to pinpoint cause because of current rendering)
