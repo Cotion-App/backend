@@ -22,7 +22,7 @@ def notion_auth(temp_code, redirect_uri):
         'https://api.notion.com/v1/oauth/token', headers=auth, json=payload)
     try:
         if res.status_code != 200:
-            notion_errors(json.loads(res._content))
+            notion_errors(json.loads(res._content)['code'], "notion_auth")
         return res.json()['access_token'], 200
     except Exception as e:
         return str(e).capitalize(), 401
@@ -37,9 +37,10 @@ def run(domain, canvas_token, course_id, course_name, db_id, notion_token):
                    'Notion-Version': '2021-08-16'}
         curr_state = read_notion(db_id, headers)
         update_notion(db_id, new_state, curr_state, course_name, headers)
+
         return 'You are now up to date!', 200
     except Exception as e:
-        return str(e).capitalize()
+        return str(e).capitalize(), 400
 
 
 def get_assignments(domain, canvas_token, course_id):
@@ -63,8 +64,8 @@ def get_assignments(domain, canvas_token, course_id):
         elif "InvalidAccessToken" in ex:
             message = "Invalid Canvas Token"
         else:
-            print(e.__class__, str(e), e.__traceback__)
-            message = "Unknown Error, Try Again Later"
+            print(e.__class__, str(e), e.__traceback__.tb_lineno)
+            message = "Try again Later"
 
         raise Exception(message)
 
@@ -83,7 +84,7 @@ def read_notion(db_id, headers):
             res = requests.post(
                 'https://api.notion.com/v1/databases/' + db_id + '/query', headers=headers)
         if (res.status_code != 200):
-            notion_errors(json.loads(res._content)['code'])
+            notion_errors(json.loads(res._content)['code'], "read_notion")
 
         res_json = res.json()
         all_entries.extend(res_json['results'])
@@ -112,7 +113,7 @@ def read_notion(db_id, headers):
     return temp
 
 
-def notion_errors(code):
+def notion_errors(code, func):
     """returns custom strings for all Notion errors."""
     errors = {"invalid_grant": "Invalid grant",
               "unauthorized": "invalid auth token",
@@ -122,8 +123,8 @@ def notion_errors(code):
     try:
         message = errors[code]
         raise Exception(message)
-    except Exception as e:
-        print(code, e.__class__, str(e), e.__traceback__)
+    except:
+        print(code + " in " + func)
         raise Exception('Try again later.')
 
 
@@ -148,4 +149,4 @@ def update_notion(db_id, new_state, curr_state, course_name, headers):
                     "https://api.notion.com/v1/pages", headers=headers, json=payload)
 
             if res.status_code != 200:
-                notion_errors(json.loads(res._content)['code'])
+                notion_errors(json.loads(res._content)['code'], "update_notion")
