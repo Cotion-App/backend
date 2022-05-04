@@ -39,7 +39,7 @@ def run(domain, canvas_token, course_id, course_name, db_id, notion_token):
         update_notion(db_id, new_state, curr_state, course_name, headers)
         return 'You are now up to date!', 200
     except Exception as e:
-        return str(e).capitalize(), 400
+        return str(e).capitalize()
 
 
 def get_assignments(domain, canvas_token, course_id):
